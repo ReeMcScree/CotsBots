@@ -1,10 +1,10 @@
-Spring 2026 CotsBots Capstone Project
+# Spring 2026 CotsBots Capstone Project
 
-Members:
-    Alex Johnson
-    Divyansh
-    Jacob McKenzie
-    Tristan Talbott
+Members:<br/>
+    Alex Johnson<br/>
+    Divyansh<br/>
+    Jacob McKenzie<br/>
+    Tristan Talbott<br/>
     Urvashi Gupta
 
 Forked from https://github.com/OutrightWings/CotsBots
