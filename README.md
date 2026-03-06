@@ -1,15 +1,16 @@
 # Spring 2026 CotsBots Capstone Project
 
 Members:<br/>
-    Alex Johnson<br/>
-    Divyansh<br/>
-    Jacob McKenzie<br/>
-    Tristan Talbott<br/>
-    Urvashi Gupta
+&nbsp;&nbsp;&nbsp;Alex Johnson<br/>
+&nbsp;&nbsp;&nbsp;Divyansh<br/>
+&nbsp;&nbsp;&nbsp;Jacob McKenzie<br/>
+&nbsp;&nbsp;&nbsp;Tristan Talbott<br/>
+&nbsp;&nbsp;&nbsp;Urvashi Gupta
 
 Forked from https://github.com/OutrightWings/CotsBots
 
 (Update as project continues)
+
 Use RobotLetterControlV2 on the robots. Flash it onto them with the Arduino IDE.
 
 Information on how to configure the robots bluetooth board can be found here (such as device name or baud rate): https://wiki.dfrobot.com/Bluno_SKU_DFR0267#Configure%20the%20BLE%20through%20AT%20command
