@@ -74,7 +74,21 @@ class MainActivity : AppCompatActivity() {
         // Tapping the controller icon takes you to the connect screen
         ivStatus.setOnClickListener { navigateTo(BluetoothFragment()) }
 
-        loadDefaultScreen()
+        requestBluetoothPermissions()
+    }
+
+    private fun requestBluetoothPermissions() {
+        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            listOf(Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+        }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+
+        if (needed.isNotEmpty())
+            ActivityCompat.requestPermissions(this, needed.toTypedArray(), REQUEST_PERMISSIONS)
+        else
+            loadDefaultScreen()
     }
 
     // Swap out whichever Fragment is in the container
@@ -93,28 +107,20 @@ class MainActivity : AppCompatActivity() {
         ivStatus.setColorFilter(color)
     }
 
-    // Android 12+ needs BLUETOOTH_SCAN + BLUETOOTH_CONNECT.
-    // Older Android needs BLUETOOTH + ACCESS_FINE_LOCATION.
-    private fun requestBluetoothPermissions() {
-        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        } else {
-            listOf(Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN,
-                Manifest.permission.ACCESS_FINE_LOCATION)
-        }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-
-        if (needed.isNotEmpty())
-            ActivityCompat.requestPermissions(this, needed.toTypedArray(), REQUEST_PERMISSIONS)
-        else
-            loadDefaultScreen()
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_PERMISSIONS) loadDefaultScreen()
     }
 
     private fun loadDefaultScreen() {
+        if (BluetoothService.bluetoothAdapter == null) {
+            navigateTo(BluetoothFragment())
+            return
+        }
+        if (!BluetoothService.isBluetoothEnabled()) {
+            val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            startActivityForResult(enableIntent, REQUEST_ENABLE_BT)
+        }
         navigateTo(BluetoothFragment())
     }
 }
