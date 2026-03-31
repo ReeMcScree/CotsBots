@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121212"
+    android:gravity="center"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Joystick Control"
+        android:textColor="#4CAF50"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <!--
+      JoystickView — our custom view.
+      It draws the outer circle + movable thumb and fires onJoystickMoved callbacks.
+      Width and height should be equal (square) so the circle is not squashed.
+    -->
+    <com.example.robotcommunication.JoystickView
+        android:id="@+id/joystickView"
+        android:layout_width="260dp"
+        android:layout_height="260dp" />
+
+    <!-- Live readout of current X/Y values being sent -->
+    <TextView
+        android:id="@+id/tvValues"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="X: 0   Y: 0"
+        android:textColor="#666666"
+        android:textSize="14sp"
+        android:fontFamily="monospace"
+        android:layout_marginTop="20dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Sending at 20 Hz  ·  Range ±255"
+        android:textColor="#444444"
+        android:textSize="11sp"
+        android:layout_marginTop="6dp" />
+
+</LinearLayout>
