@@ -65,6 +65,11 @@ class MainActivity : AppCompatActivity() {
             BluetoothService.sendCommand("MODE:FOLLOW")
             drawerLayout.closeDrawer(GravityCompat.START)
         }
+        findViewById<LinearLayout>(R.id.navTankControl).setOnClickListener {
+            // Tank controls
+            navigateTo(fragment = TankControlFragment())
+            drawerLayout.closeDrawer(GravityCompat.START)
+        }
 
         // --- Status bar updates (runs on UI thread) ---
         BluetoothService.onConnectionStateChanged = { connected ->
