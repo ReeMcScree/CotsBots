@@ -1,0 +1,31 @@
+Robot Motor Controls
+
+Motor Directions (HIGH = forward, LOW = backward)
+    M1: Front right motor direction
+    M2: Front left motor direction
+    M3: Back right motor direction
+    M4: Back left motor direction
+
+    Can combine front and back motors and use M1 for right two and M2 for left two
+
+Motor Speeds (0-255)
+    E1: M1: Front right motor speed
+    M2: Front left motor speed
+    M3: Back right motor speed
+    M4: Back left motor speed
+
+    Can combine like direction
+
+Previous Team Controls:
+    Z: Print instructions
+    W: Move forward indefinetly
+    S: Move backward indefinetly
+    A: Pivot left indefinetly
+    D: Pivot right indefinetly
+
+    W#: Move forvard for # ms (ex. w1000 for one second)
+    Can be done with any direction
+
+Future Controls:
+    x,y,z
+    Where x is the left motor speed, y is the right motor speed, and z is the duration of the command, in seconds (0 for continous)
