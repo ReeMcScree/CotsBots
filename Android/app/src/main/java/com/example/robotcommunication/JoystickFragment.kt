@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -56,6 +57,17 @@ class JoystickFragment : Fragment() {
     }
 
     /**
+     * Handles generic motion events (like hardware joystick movement) dispatched from the Activity.
+     */
+    fun handleGenericMotionEvent(event: MotionEvent): Boolean {
+        return if (::joystickView.isInitialized) {
+            joystickView.onGenericMotionEvent(event)
+        } else {
+            false
+        }
+    }
+
+    /**
      * Maps a normalized float (-1.0 to 1.0) to an integer motor speed (-255 to 255).
      */
     private fun toMotorValue(normalized: Float): Int =
@@ -71,7 +83,18 @@ class JoystickFragment : Fragment() {
         
         // If connected, send the formatted command string
         if (BluetoothService.isConnected) {
-            BluetoothService.sendCommand("J:$x,$y")
+            if (y > 50) {
+                BluetoothService.sendCommand("w100")
+            }
+            else if (y < -50) {
+                BluetoothService.sendCommand("s100")
+            }
+            else if (x > 50) {
+                BluetoothService.sendCommand("d100")
+            }
+            else if (x < -50) {
+                BluetoothService.sendCommand("a100")
+            }
         }
     }
 
