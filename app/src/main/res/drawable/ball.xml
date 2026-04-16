@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#9C27B0"/>
+    <stroke android:width="2dp" android:color="#CE93D8"/>
+    <!-- subtle gradient to give it a 3D feel -->
+    <gradient
+        android:type="radial"
+        android:gradientRadius="50%"
+        android:startColor="#CE93D8"
+        android:endColor="#6A0080"
+        android:centerX="0.4"
+        android:centerY="0.35"/>
+</shape>

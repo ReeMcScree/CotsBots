@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -68,6 +69,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<LinearLayout>(R.id.navTankControl).setOnClickListener {
             // Tank controls
             navigateTo(fragment = TankControlFragment())
+            drawerLayout.closeDrawer(GravityCompat.START)
+        }
+        findViewById<LinearLayout>(R.id.navTiltControl).setOnClickListener {
+            navigateTo(TiltControlFragment())
             drawerLayout.closeDrawer(GravityCompat.START)
         }
 
