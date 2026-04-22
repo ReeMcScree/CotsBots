@@ -49,7 +49,7 @@ class JoystickFragment : Fragment() {
             override fun run() {
                 sendJoystickData()
                 // Schedule the next execution in 50ms
-                handler.postDelayed(this, 50)
+                handler.postDelayed(this, 100)
             }
         }
         // Start the loop
@@ -83,17 +83,20 @@ class JoystickFragment : Fragment() {
         
         // If connected, send the formatted command string
         if (BluetoothService.isConnected) {
-            if (y > 50) {
-                BluetoothService.sendCommand("w100")
+            if (y > 75) {
+                BluetoothService.sendCommand("w")
             }
-            else if (y < -50) {
-                BluetoothService.sendCommand("s100")
+            else if (y < -75) {
+                BluetoothService.sendCommand("s")
             }
-            else if (x > 50) {
-                BluetoothService.sendCommand("d100")
+            else if (x > 75) {
+                BluetoothService.sendCommand("d")
             }
-            else if (x < -50) {
-                BluetoothService.sendCommand("a100")
+            else if (x < -75) {
+                BluetoothService.sendCommand("a")
+            }
+            else {
+                BluetoothService.sendCommand("x")
             }
         }
     }

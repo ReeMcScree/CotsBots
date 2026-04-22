@@ -160,14 +160,8 @@ class JoystickView @JvmOverloads constructor(
         val device = event.device ?: return
 
         // Try getting values from primary axes (Left Stick usually)
-        var x = getCenteredAxis(event, device, MotionEvent.AXIS_X, historyPos)
+        var x = getCenteredAxis(event, device, MotionEvent.AXIS_Z, historyPos)
         var y = getCenteredAxis(event, device, MotionEvent.AXIS_Y, historyPos)
-
-        // If primary axes are zero, try the D-Pad (Hat axes)
-        if (abs(x) < 0.01f && abs(y) < 0.01f) {
-            x = getCenteredAxis(event, device, MotionEvent.AXIS_HAT_X, historyPos)
-            y = getCenteredAxis(event, device, MotionEvent.AXIS_HAT_Y, historyPos)
-        }
 
         xValue = x
         yValue = -y // Invert Y for robot "forward"
