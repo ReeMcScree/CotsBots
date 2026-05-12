@@ -27,5 +27,5 @@ Previous Team Controls:
     Can be done with any direction
 
 Future Controls:
-    x,y,z
-    Where x is the left motor speed, y is the right motor speed, and z is the duration of the command, in seconds (0 for continous)
+    L,R,D
+    Where L is the left motor speed(int, 0-100), R is the right motor speed(int, 0-100), and D is the duration of the command, in miliseconds (int, 0 for continous)
