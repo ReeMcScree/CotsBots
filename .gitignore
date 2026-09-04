@@ -22,3 +22,8 @@ local.properties
 *.keystore
 *.jks
 /.fetch-client/
+# OpenCV SDK — restored locally, not committed (see docs/RESTORE.md)
+OpenCV-android-sdk/
+
+# All build output
+**/build/

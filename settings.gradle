@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "COTBOTS"
 include ':app'
 include ':sdk'
+project(':sdk').projectDir = new File(rootDir, 'OpenCV-android-sdk/sdk')
