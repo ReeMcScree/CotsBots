@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0A0A0F"
+    android:padding="10dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="COTSBOTS"
+            android:textColor="#9B6DFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.3"/>
+
+        <!-- Bluetooth status + reconnect button -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvBluetooth"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BT: Not connected"
+                android:textColor="#FFFFFF60"
+                android:textSize="10sp"
+                android:fontFamily="monospace"
+                android:background="#111118"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"/>
+
+            <Button
+                android:id="@+id/btnReconnect"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:text="↺"
+                android:textColor="#9B6DFF"
+                android:background="@android:color/transparent"
+                android:textSize="18sp"
+                android:padding="0dp"/>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Camera Preview / Processed Image -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3"
+        android:background="#111118">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <ImageView
+            android:id="@+id/ivProcessed"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:visibility="gone"/>
+
+    </FrameLayout>
+
+    <!-- Pixel Info -->
+    <TextView
+        android:id="@+id/tvPixelInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🟢 Far: --  🟡 Mid: --  🔴 Close: --"
+        android:textColor="#FFFFFF80"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:paddingVertical="3dp"/>
+
+    <!-- Command Display -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#111118"
+        android:padding="10dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tvCommand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="?"
+            android:textColor="#9B6DFF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:minWidth="90dp"/>
+
+        <TextView
+            android:id="@+id/tvReason"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textColor="#FFFFFF80"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:layout_marginStart="8dp"/>
+
+    </LinearLayout>
+
+    <!-- Progress + Status -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"/>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Initializing..."
+        android:textColor="#FFFFFF50"
+        android:textSize="10sp"
+        android:fontFamily="monospace"
+        android:paddingVertical="2dp"/>
+
+    <!-- Chat messages -->
+    <ScrollView
+        android:id="@+id/chatScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2"
+        android:background="#0D0D15"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:id="@+id/chatContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="4dp"/>
+
+    </ScrollView>
+
+    <!-- Chat Input -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical">
+
+        <EditText
+            android:id="@+id/etPrompt"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Ask Gemini about the image..."
+            android:textColor="#FFFFFF"
+            android:textColorHint="#FFFFFF40"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:background="#111118"
+            android:padding="10dp"
+            android:maxLines="3"
+            android:inputType="textMultiLine"
+            android:layout_marginEnd="6dp"/>
+
+        <Button
+            android:id="@+id/btnSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#9B6DFF"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:textAllCaps="false"
+            android:paddingHorizontal="16dp"/>
+
+    </LinearLayout>
+
+    <!-- Capture Button -->
+    <Button
+        android:id="@+id/btnCapture"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📷  Capture New Image"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#FF6B9D"
+        android:textSize="13sp"
+        android:fontFamily="monospace"
+        android:textAllCaps="false"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="4dp"/>
+
+</LinearLayout>
