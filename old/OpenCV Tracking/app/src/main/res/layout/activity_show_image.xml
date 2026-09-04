@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/showimage"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ShowimageActivity">
+
+    <ImageView
+        android:layout_width="320dp"
+        android:layout_height="320dp"
+        android:id="@+id/imageView"
+        android:background="#000"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"
+        />
+
+    <Button
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Select"
+        android:textSize="15sp"
+        android:id="@+id/Select"
+        android:layout_below="@+id/imageView"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="80dp"
+        />
+
+    <Button
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Camera"
+        android:id="@+id/Camera"
+        android:textSize="15sp"
+        android:layout_below="@+id/Select"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="7dp"
+        />
+
+    <Button
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Detect"
+        android:id="@+id/Detect"
+        android:textSize="15sp"
+        android:layout_below="@+id/Camera"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="7dp"
+        />
+
+    <Button
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Ball"
+        android:id="@+id/Ball"
+        android:textSize="15sp"
+        android:layout_below="@+id/Detect"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="7dp"
+        />
+
+    <Button
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="MicroPhone"
+        android:id="@+id/Microphone"
+        android:textSize="12sp"
+        android:layout_below="@+id/Ball"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="7dp"
+        />
+
+
+
+</RelativeLayout>
