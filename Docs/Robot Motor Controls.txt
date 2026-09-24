@@ -1,6 +1,7 @@
-Robot Motor Controls
-
-Motor Directions (HIGH = forward, LOW = backward)
+////////////////////////////
+////    Arduino Side    ////
+////////////////////////////
+Motor Directions (int, HIGH = forward, LOW = backward)
     M1: Front right motor direction
     M2: Front left motor direction
     M3: Back right motor direction
@@ -8,24 +9,62 @@ Motor Directions (HIGH = forward, LOW = backward)
 
     Can combine front and back motors and use M1 for right two and M2 for left two
 
-Motor Speeds (0-255)
-    E1: M1: Front right motor speed
-    M2: Front left motor speed
-    M3: Back right motor speed
-    M4: Back left motor speed
+Motor Speeds (int, 0-255)
+    E1: Front right motor speed
+    E2: Front left motor speed
+    E3: Back right motor speed
+    E4: Back left motor speed
 
     Can combine like direction
 
-Previous Team Controls:
-    Z: Print instructions
-    W: Move forward indefinetly
-    S: Move backward indefinetly
-    A: Pivot left indefinetly
-    D: Pivot right indefinetly
+Examples:
+M1, M2 = HIGH and E1, E2 = 255 would be forward at full speed
+M1 = HIGH, M2 = LOW and E1, E2 = 128 would be pivot right at half speed
 
-    W#: Move forvard for # ms (ex. w1000 for one second)
+In code these would be:
+//Standard PWM DC control
+int E1 = 5;    //M1 Speed Control
+int E2 = 6;    //M2 Speed Control
+int M1 = 4;    //M1 Direction Control
+int M2 = 7;    //M1 Direction Control
+
+void advance() //Move forward
+{
+  analogWrite (E1,255); //write 255 to E1, or pin 5
+  digitalWrite(M1,HIGH);
+  analogWrite (E2,255);
+  digitalWrite(M2,HIGH);
+}
+void turn_R () //Turn Right
+{
+  analogWrite (E1,128);
+  digitalWrite(M1,HIGH);
+  analogWrite (E2,128);
+  digitalWrite(M2,LOW);
+}
+
+
+////////////////////////////
+////    Android Side    ////
+////////////////////////////
+Previous Team Controls:
+    z: Print instructions
+    w: Move forward indefinetly
+    s: Move backward indefinetly
+    a: Pivot left indefinetly
+    d: Pivot right indefinetly
+
+    w#: Move forvard for # miliseconds (ex. w1000 for one second forward)
     Can be done with any direction
 
 Future Controls:
     L,R,D
-    Where L is the left motor speed(int, 0-100), R is the right motor speed(int, 0-100), and D is the duration of the command, in miliseconds (int, 0 for continous)
+    Where L is the left motor speed(int, -255 to 255), R is the right motor speed(int, -255 to 255), and D is the duration of the command, in miliseconds (int, 0 for continous)
+    Negative speeds will turn the motors backwards, positive forwards
+
+////////////////////////////
+////      Examples      ////
+////////////////////////////
+(tested on flat wood surface)
+Rotate robot left 90 degrees: 255,-255,1250
+Rotate robot right 90 degrees: -255,255,1250
