@@ -37,6 +37,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
@@ -128,6 +130,12 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothGatt bluetoothGatt;
     private BluetoothGattCharacteristic serialChar;
     private boolean bleConnected = false;
+
+    // Ball following
+    private final BallFollower ballFollower = new BallFollower();
+    private boolean ballFollowMode = false;
+    private long lastBallCommandTime = 0;
+    private static final long BALL_COMMAND_INTERVAL_MS = 150;
     private boolean scanning = false;
     private boolean passwordSent = false;
     private final Handler bleHandler = new Handler(Looper.getMainLooper());
@@ -182,6 +190,22 @@ public class MainActivity extends AppCompatActivity {
             disconnectBLE();
             startBLEScan();
         });
+
+        Button btnBallFollow = findViewById(R.id.btnBallFollow);
+        btnBallFollow.setOnClickListener(v -> {
+            ballFollowMode = !ballFollowMode;
+            btnBallFollow.setText(ballFollowMode ? "Stop Following" : "⚽  Follow Ball");
+            if (!ballFollowMode) sendCommand("0,0,0");
+            setStatus(ballFollowMode ? "Ball following ON" : "Ball following OFF");
+            Log.d(TAG, "Ball follow toggled: " + ballFollowMode);
+        });
+        // Long-press = send a test move straight to the robot (no camera).
+        btnBallFollow.setOnLongClickListener(v -> {
+            Log.d(TAG, "TEST MOVE: sending 200,200,1000");
+            sendCommand("200,200,1000");
+            setStatus("Test move sent");
+            return true;
+        });
     }
 
     // ── Camera ──────────────────────────────────────────────────────────
@@ -196,14 +220,81 @@ public class MainActivity extends AppCompatActivity {
                 preview.setSurfaceProvider(previewView.getSurfaceProvider());
                 imageCapture = new ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build();
+
+                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build();
+                imageAnalysis.setAnalyzer(cameraExecutor, this::analyzeFrame);
+
                 provider.unbindAll();
                 provider.bindToLifecycle(this,
-                        CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture);
+                        CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture, imageAnalysis);
                 setStatus("Ready — tap Capture!");
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Camera: " + e.getMessage());
             }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void analyzeFrame(ImageProxy image) {
+        if (!ballFollowMode) { image.close(); return; }
+
+        long now = System.currentTimeMillis();
+        if (now - lastBallCommandTime < BALL_COMMAND_INTERVAL_MS) { image.close(); return; }
+
+        try {
+            Bitmap bmp = imageProxyToBitmap(image);
+            if (bmp == null) { image.close(); return; }
+
+            Mat frame = new Mat();
+            Utils.bitmapToMat(bmp, frame);
+            Imgproc.cvtColor(frame, frame, Imgproc.COLOR_RGBA2BGR);
+            Core.rotate(frame, frame, Core.ROTATE_90_CLOCKWISE);
+
+            BallFollower.Result result = ballFollower.analyze(frame);
+            Log.d(TAG, "Ball: " + result.status + " -> " + result.command);
+            sendCommand(result.command);
+            lastBallCommandTime = now;
+
+            final String status = result.status;
+            uiHandler.post(() -> tvStatus.setText(status));
+
+            frame.release();
+        } catch (Exception e) {
+            Log.e(TAG, "Ball analyze: " + e.getMessage());
+        } finally {
+            image.close();
+        }
+    }
+
+    private Bitmap imageProxyToBitmap(ImageProxy image) {
+        try {
+            ImageProxy.PlaneProxy[] planes = image.getPlanes();
+            java.nio.ByteBuffer yBuffer = planes[0].getBuffer();
+            java.nio.ByteBuffer uBuffer = planes[1].getBuffer();
+            java.nio.ByteBuffer vBuffer = planes[2].getBuffer();
+
+            int ySize = yBuffer.remaining();
+            int uSize = uBuffer.remaining();
+            int vSize = vBuffer.remaining();
+
+            byte[] nv21 = new byte[ySize + uSize + vSize];
+            yBuffer.get(nv21, 0, ySize);
+            vBuffer.get(nv21, ySize, vSize);
+            uBuffer.get(nv21, ySize + vSize, uSize);
+
+            android.graphics.YuvImage yuv = new android.graphics.YuvImage(
+                    nv21, android.graphics.ImageFormat.NV21,
+                    image.getWidth(), image.getHeight(), null);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            yuv.compressToJpeg(new android.graphics.Rect(
+                    0, 0, image.getWidth(), image.getHeight()), 80, out);
+            byte[] bytes = out.toByteArray();
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        } catch (Exception e) {
+            Log.e(TAG, "imageProxyToBitmap: " + e.getMessage());
+            return null;
+        }
     }
 
     // ── BLE ──────────────────────────────────────────────────────────────
@@ -250,14 +341,43 @@ public class MainActivity extends AppCompatActivity {
                     != PackageManager.PERMISSION_GRANTED) return;
 
             BluetoothDevice device = result.getDevice();
-            String name = device.getName();
-            if (name != null) Log.d(TAG, "BLE: [" + name + "]");
 
-            if (name != null && name.toLowerCase().contains("bluno")) {
+            // getName() is often null during scanning. Also read the advertised
+            // name from the scan record, which is more reliably present.
+            String name = device.getName();
+            String advName = null;
+            if (result.getScanRecord() != null) {
+                advName = result.getScanRecord().getDeviceName();
+            }
+
+            String effectiveName = (name != null) ? name : advName;
+
+            // Check if the advertisement includes the DFRobot service UUID —
+            // the most reliable way to identify the board regardless of name.
+            boolean hasDfService = false;
+            if (result.getScanRecord() != null
+                    && result.getScanRecord().getServiceUuids() != null) {
+                for (android.os.ParcelUuid pu : result.getScanRecord().getServiceUuids()) {
+                    if (pu.getUuid().equals(BLE_SERVICE)) { hasDfService = true; break; }
+                }
+            }
+
+            Log.d(TAG, "BLE seen: name=[" + name + "] adv=[" + advName
+                    + "] dfService=" + hasDfService);
+
+            boolean nameMatch = effectiveName != null &&
+                    (effectiveName.toLowerCase().contains("bluno") ||
+                            effectiveName.toLowerCase().contains("romeo") ||
+                            effectiveName.toLowerCase().contains("dfrobot") ||
+                            effectiveName.toLowerCase().contains("dfble") ||
+                            effectiveName.equals("4"));   // RoMeo BLE seen advertising as "4"
+
+            if (hasDfService || nameMatch) {
                 stopScan();
                 uiHandler.post(() -> tvBluetooth.setText("BT: Connecting..."));
-                bluetoothGatt = device.connectGatt(MainActivity.this, false,
-                        gattCallback, BluetoothDevice.TRANSPORT_LE);
+                uiHandler.post(() ->
+                        bluetoothGatt = device.connectGatt(MainActivity.this, false,
+                                gattCallback, BluetoothDevice.TRANSPORT_LE));
             }
         }
 
@@ -275,8 +395,16 @@ public class MainActivity extends AppCompatActivity {
                     != PackageManager.PERMISSION_GRANTED) return;
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                // Make sure scanning is fully stopped — scanning while connected
+                // can destabilize the link and cause it to drop.
+                stopScan();
+                bleHandler.removeCallbacksAndMessages(null);
                 uiHandler.post(() -> tvBluetooth.setText("BT: Connected..."));
-                bleHandler.postDelayed(() -> gatt.discoverServices(), 500);
+                // Request high-priority connection for stability, then discover.
+                try {
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                } catch (Exception ignored) {}
+                bleHandler.postDelayed(() -> gatt.discoverServices(), 600);
             } else {
                 bleConnected = false;
                 serialChar = null;
