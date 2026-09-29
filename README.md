@@ -1,18 +1,58 @@
-# Spring 2026 CotsBots Capstone Project
+# COTSBOTS Navigation
 
-Members:<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;Alex Johnson<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;Divyansh<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;Jacob McKenzie<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;Tristan Talbott<br/>
-&nbsp;&nbsp;&nbsp;&nbsp;Urvashi Gupta
+A senior capstone project bridging low-cost robotics hardware with LLM-driven
+autonomous navigation. An Android phone acts as the robot's eyes and brain: it
+photographs what's ahead, asks a vision LLM how to proceed, and relays the
+resulting motion command to an Arduino-based robot over Bluetooth Low Energy.
 
-Forked from https://github.com/OutrightWings/CotsBots
+## The vision-navigation loop
 
-(Update as project continues)
+1. **Capture** — CameraX grabs a frame from the phone's rear camera.
+2. **Annotate** — OpenCV runs Canny edge detection and splits the frame into
+   FAR / MID / CLOSE zones, counting edge density as a proximity estimate. A
+   local safety rule stops the robot immediately if the CLOSE zone is too dense,
+   without waiting for the network.
+3. **Ask the LLM** — the annotated image plus a navigation prompt go to Gemini,
+   which replies with strict JSON: `{"command":"FORWARD","reason":"path clear"}`.
+4. **Parse** — the app validates the command against FORWARD / BACK / LEFT /
+   RIGHT / STOP.
+5. **Relay** — the command is translated to the firmware's motion protocol and
+   written to the robot's BLE serial characteristic.
 
-Use RobotLetterControlV2 on the robots. Flash it onto them with the Arduino IDE.
+## Command protocol
 
-Information on how to configure the robots bluetooth board can be found here (such as device name or baud rate): https://wiki.dfrobot.com/Bluno_SKU_DFR0267#Configure%20the%20BLE%20through%20AT%20command
+App and firmware communicate over BLE serial using CSV motion commands:
 
-The Bluno test app, which can be used with RobotLetterControlV2 is found at the same above link under the section Bluno Basic Demo step 6. It can also serve as a starting point for an android app if you are able to configure to an older working environmet.
+```
+left,right,duration
+```
+
+- `left`, `right`: motor speeds, −255 to 255 (negative = reverse)
+- `duration`: milliseconds to run, then auto-stop (0 = continuous)
+- `0,0,0` = stop immediately
+
+Example: `200,200,1000` drives both motors forward at speed 200 for one second.
+The firmware parser tolerates stray whitespace, which resolves the earlier
+phone-over-Bluetooth parsing issue.
+
+## Project layout
+
+| Path | What it is |
+|------|-----------|
+| `app/` | The Android app (Java, CameraX + OpenCV + Gemini + BLE). |
+| `firmware/` | Arduino sketch for the robot (DFRobot Bluno). |
+| `docs/` | Setup and restore notes. |
+
+## Building
+
+See [`docs/RESTORE.md`](docs/RESTORE.md) — a couple of large binary pieces
+(the OpenCV `sdk` module and the Gradle wrapper jar) are intentionally kept out
+of Git and must be restored once locally.
+
+## Security
+
+The Gemini API key is **not** committed. It is read at build time from
+`local.properties` into `BuildConfig.GEMINI_API_KEY`. See `docs/RESTORE.md`.
+
+---
+*Senior Capstone Project — COTSBOTS Navigation*
