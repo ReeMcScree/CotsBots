@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
@@ -21,8 +22,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Fragment that uses OpenCV to detect a white ball from the camera stream
- * and sends movement commands to the robot via Bluetooth.
+ * Fragment that uses OpenCV to detect any colored ball selected via touch input
+ * from the camera stream and sends movement commands to the robot via Bluetooth.
  */
 class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener2 {
 
@@ -30,15 +31,23 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
     private lateinit var tvTrackingStatus: TextView
 
     private lateinit var rgbaMat: Mat
+    private lateinit var smallMat: Mat
+    private lateinit var blurred: Mat
     private lateinit var hsvMat: Mat
     private lateinit var maskMat: Mat
 
     private var lastSendTime = 0L
 
+    // Selected color tracking state
+    private var selectedH = 0.0
+    private var selectedS = 0.0
+    private var selectedV = 0.0
+    private var hasSelectedColor = false
+
     private val requestCameraLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                tvTrackingStatus.text = "Camera permission granted. Starting camera..."
+                tvTrackingStatus.text = "Tap any ball on screen to select color..."
                 cameraView.setCameraPermissionGranted()
                 cameraView.enableFpsMeter()
                 cameraView.enableView()
@@ -60,8 +69,35 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         cameraView.setCvCameraViewListener(this)
         cameraView.setCameraIndex(CameraBridgeViewBase.CAMERA_ID_BACK)
 
+        // Touch listener to select color from camera preview
+        cameraView.setOnTouchListener { v, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                v.performClick()
+                val touchX = event.x
+                val touchY = event.y
+                if (cameraView.width > 0 && cameraView.height > 0 && ::hsvMat.isInitialized && !hsvMat.empty()) {
+                    // Map touch coordinates to smallMat coordinates (50% scale)
+                    val matX = (touchX / cameraView.width * hsvMat.cols()).toInt().coerceIn(0, hsvMat.cols() - 1)
+                    val matY = (touchY / cameraView.height * hsvMat.rows()).toInt().coerceIn(0, hsvMat.rows() - 1)
+                    val hsvPixel = hsvMat.get(matY, matX)
+                    if (hsvPixel != null && hsvPixel.size >= 3) {
+                        selectedH = hsvPixel[0]
+                        selectedS = hsvPixel[1]
+                        selectedV = hsvPixel[2]
+                        hasSelectedColor = true
+                        activity?.runOnUiThread {
+                            Toast.makeText(requireContext(), "Tracking Color Set! HSV(${selectedH.toInt()}, ${selectedS.toInt()}, ${selectedV.toInt()})", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        }
+
         if (OpenCVLoader.initDebug()) {
-            tvTrackingStatus.text = "OpenCV loaded. Checking camera permission..."
+            tvTrackingStatus.text = "Tap any ball on screen to select color..."
         } else {
             tvTrackingStatus.text = "Error initializing OpenCV."
         }
@@ -71,7 +107,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         super.onResume()
         if (OpenCVLoader.initDebug()) {
             if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                tvTrackingStatus.text = "Starting camera preview..."
+                tvTrackingStatus.text = "Tap any ball on screen to select color..."
                 cameraView.setCameraPermissionGranted()
                 cameraView.enableFpsMeter()
                 cameraView.enableView()
@@ -94,12 +130,16 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
 
     override fun onCameraViewStarted(width: Int, height: Int) {
         rgbaMat = Mat()
+        smallMat = Mat()
+        blurred = Mat()
         hsvMat = Mat()
         maskMat = Mat()
     }
 
     override fun onCameraViewStopped() {
         rgbaMat.release()
+        smallMat.release()
+        blurred.release()
         hsvMat.release()
         maskMat.release()
     }
@@ -107,12 +147,42 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
     override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame): Mat {
         rgbaMat = inputFrame.rgba()
 
-        // Convert RGBA to HSV for color filtering
-        Imgproc.cvtColor(rgbaMat, hsvMat, Imgproc.COLOR_RGB2HSV)
+        // Downsize by 50% for high performance on weaker devices (75% fewer pixels to process)
+        val scale = 0.5
+        Imgproc.resize(rgbaMat, smallMat, Size(), scale, scale, Imgproc.INTER_LINEAR)
 
-        // Define HSV color range for WHITE object detection (low saturation, high brightness)
-        val lowerBound = Scalar(0.0, 0.0, 240.0)
-        val upperBound = Scalar(180.0, 20.0, 255.0)
+        // Blur the downsized frame to reduce high-frequency noise
+        Imgproc.GaussianBlur(smallMat, blurred, Size(11.0, 11.0), 0.0)
+
+        // Convert RGBA to HSV for color filtering
+        Imgproc.cvtColor(blurred, hsvMat, Imgproc.COLOR_RGB2HSV)
+
+        // Dynamic HSV range based on touch-selected color
+        val lowerBound: Scalar
+        val upperBound: Scalar
+
+        if (hasSelectedColor) {
+            val hRange = 5.0
+            val sRange = 60.0
+            val vRange = 100.0
+
+            val hMin = (selectedH - hRange).coerceAtLeast(0.0)
+            val hMax = (selectedH + hRange).coerceAtMost(180.0)
+
+            // If selected color is white/gray (low saturation), allow broad white/gray range (S: 0..60)
+            val sMin = if (selectedS < 50.0) 0.0 else (selectedS - sRange).coerceAtLeast(30.0)
+            val sMax = if (selectedS < 50.0) 60.0 else 255.0
+
+            val vMin = (selectedV - vRange).coerceAtLeast(30.0)
+            val vMax = 255.0
+
+            lowerBound = Scalar(hMin, sMin, vMin)
+            upperBound = Scalar(hMax, sMax, vMax)
+        } else {
+            // Default fallback before any color is tapped (white ball range)
+            lowerBound = Scalar(0.0, 0.0, 240.0)
+            upperBound = Scalar(180.0, 20.0, 255.0)
+        }
 
         Core.inRange(hsvMat, lowerBound, upperBound, maskMat)
 
@@ -132,14 +202,14 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         var bestCircularity = 0.0
         var bestFillRatio = 0.0
 
-        val frameWidth = rgbaMat.cols().toDouble()
-        val frameHeight = rgbaMat.rows().toDouble()
-        val centerX = frameWidth / 2.0
-        val centerY = frameHeight / 2.0
+        val smallWidth = smallMat.cols().toDouble()
+        val smallHeight = smallMat.rows().toDouble()
+        val smallCenterX = smallWidth / 2.0
 
         for (contour in contours) {
             val area = Geometry.contourArea(contour)
-            if (area in 100.0..10000.0) {
+            // Scaled down area range (corresponds to 200 to 40000 on full frame)
+            if (area in 100.0..12500.0) {
                 val contour2f = MatOfPoint2f()
                 contour.convertTo(contour2f, CvType.CV_32FC2)
 
@@ -147,31 +217,21 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
                 val radius = FloatArray(1)
                 Geometry.minEnclosingCircle(contour2f, center, radius)
 
-                // Ignore objects in the upper 30% of the screen (ceiling lights, wall reflections)
-                if (center.y < frameHeight * 0.3) {
-                    contour2f.release()
-                    continue
-                }
-
                 val perimeter = Geometry.arcLength(contour2f, true)
                 val circularity = if (perimeter > 0) (4.0 * Math.PI * area) / (perimeter * perimeter) else 0.0
 
                 val circleArea = Math.PI * radius[0] * radius[0]
                 val fillRatio = if (circleArea > 0) area / circleArea else 0.0
 
-                val rect = Geometry.boundingRect(contour)
-                val aspectRatio = if (rect.height > 0) rect.width.toDouble() / rect.height.toDouble() else 0.0
-
-                if (circularity > 0.35 && aspectRatio in 0.6..1.4) {
-                    val distanceFromCenterX = Math.abs(center.x - centerX)
-                    // Prioritize circularity heavily (weight = 100), then size, penalizing distance from center X
-                    val score = (circularity * 100.0) + (radius[0] * 0.5) - (distanceFromCenterX * 0.3)
+                if (circularity > 0.35) {
+                    // Prioritize larger size (radius) as primary factor, with circularity as lesser factor
+                    val score = (radius[0] * 5.0) + (circularity * 20.0)
 
                     if (score > bestScore) {
                         bestScore = score
                         bestCircleCenter = center
                         bestRadius = radius[0]
-                        bestArea = area
+                        bestArea = area * 4.0 // Scale area back up to full frame for display
                         bestCircularity = circularity
                         bestFillRatio = fillRatio
                     }
@@ -193,10 +253,10 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         val samplePoint = if (bestCircleCenter != null && bestRadius > 0f) {
             bestCircleCenter
         } else {
-            Point(centerX, centerY)
+            Point(smallCenterX, smallHeight / 2.0)
         }
-        val sx = samplePoint.x.toInt().coerceIn(0, rgbaMat.cols() - 1)
-        val sy = samplePoint.y.toInt().coerceIn(0, rgbaMat.rows() - 1)
+        val sx = samplePoint.x.toInt().coerceIn(0, hsvMat.cols() - 1)
+        val sy = samplePoint.y.toInt().coerceIn(0, hsvMat.rows() - 1)
         val hsvPixel = hsvMat.get(sy, sx)
         if (hsvPixel != null && hsvPixel.size >= 3) {
             sampledH = hsvPixel[0]
@@ -204,20 +264,29 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             sampledV = hsvPixel[2]
         }
 
+        // Scale center and radius back up to full rgbaMat resolution for drawing and motor control
+        val fullCircleCenter = if (bestCircleCenter != null) Point(bestCircleCenter.x / scale, bestCircleCenter.y / scale) else null
+        val fullRadius = bestRadius / scale.toFloat()
+
+        val frameWidth = rgbaMat.cols().toDouble()
+        val frameHeight = rgbaMat.rows().toDouble()
+        val centerX = frameWidth / 2.0
+        val centerY = frameHeight / 2.0
+
         // Draw targeting crosshair at the center of the frame
         Imgproc.line(rgbaMat, Point(centerX - 30.0, centerY), Point(centerX + 30.0, centerY), Scalar(255.0, 255.0, 255.0), 2)
         Imgproc.line(rgbaMat, Point(centerX, centerY - 30.0), Point(centerX, centerY + 30.0), Scalar(255.0, 255.0, 255.0), 2)
         Imgproc.circle(rgbaMat, Point(centerX, centerY), 15, Scalar(255.0, 255.0, 255.0), 1)
 
-        val isValidMatch = bestCircleCenter != null && bestRadius > 0f && bestCircularity > 0.45 && bestFillRatio > 0.45
+        val isValidMatch = hasSelectedColor && fullCircleCenter != null && fullRadius > 0f && bestFillRatio > 0.4
 
         val currentTime = System.currentTimeMillis()
         val shouldSendCommand = currentTime - lastSendTime >= 100L
 
         if (isValidMatch) {
-            val center = bestCircleCenter
-            // Draw circle around detected ball
-            Imgproc.circle(rgbaMat, center, bestRadius.toInt(), Scalar(0.0, 255.0, 0.0), 3)
+            val center = fullCircleCenter
+            // Draw circle around detected ball on full-res rgbaMat
+            Imgproc.circle(rgbaMat, center, fullRadius.toInt(), Scalar(0.0, 255.0, 0.0), 3)
             Imgproc.circle(rgbaMat, center, 5, Scalar(0.0, 0.0, 255.0), -1)
 
             // Draw line connecting center crosshair to detected ball center
@@ -227,10 +296,8 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             val errorX = ballX - centerX
             val normalizedError = errorX / (frameWidth / 2.0)
 
-            // Drive forward if ball is far (radius < 50), stop forward motion when close (radius >= 50)
-            val baseForward = if (bestRadius < 100.0) 180 else 0
+            val baseForward = if (fullRadius < 100.0) 180 else 0
 
-            // Steering: ensure minimum turn power of 100 so motors overcome friction and don't stall
             val rawTurn = (normalizedError * 180.0).roundToInt()
             val turnPower = when {
                 rawTurn > 15 -> rawTurn.coerceIn(100, 255)
@@ -241,7 +308,6 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             val leftMotor = (baseForward - turnPower).coerceIn(-255, 255)
             val rightMotor = (baseForward + turnPower).coerceIn(-255, 255)
 
-            // Format: L,R,D (Duration = 0 for continuous)
             val command = "$leftMotor,$rightMotor,0"
             if (shouldSendCommand) {
                 lastSendTime = currentTime
@@ -249,22 +315,23 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             }
 
             activity?.runOnUiThread {
-                tvTrackingStatus.text = "MATCH! HSV(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()} Circ:${String.format(Locale.US, "%.2f", bestCircularity)} | Fill:${String.format(Locale.US, "%.2f", bestFillRatio)}"
+                tvTrackingStatus.text = "MATCH! Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()} | Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
             }
         } else {
             if (shouldSendCommand) {
                 lastSendTime = currentTime
-                // Format: L,R,D (Stop command 0,0,0 with duration 0)
                 BluetoothService.sendCommand("0,0,0")
             }
             activity?.runOnUiThread {
-                tvTrackingStatus.text = "Searching... HSV(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()} Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
+                tvTrackingStatus.text = if (!hasSelectedColor) "Tap any ball on screen to select color..." else "Searching... Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()})"
             }
         }
 
         // Draw debug overlay text directly on the camera frame
-        val debugText = "HSV(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()} Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
-        Imgproc.putText(rgbaMat, debugText, Point(30.0, 50.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255.0, 255.0, 0.0), 2)
+        val debugText1 = "Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()}"
+        val debugText2 = "Circ:${"%.2f".format(bestCircularity)} Fill:${"%.2f".format(bestFillRatio)}"
+        Imgproc.putText(rgbaMat, debugText1, Point(30.0, 150.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255.0, 255.0, 0.0), 2)
+        Imgproc.putText(rgbaMat, debugText2, Point(30.0, 190.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255.0, 255.0, 0.0), 2)
 
         return rgbaMat
     }
