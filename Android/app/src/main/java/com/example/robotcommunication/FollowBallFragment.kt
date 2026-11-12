@@ -37,6 +37,11 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
     private lateinit var maskMat: Mat
 
     private var lastSendTime = 0L
+    private var lastDetectedTime = System.currentTimeMillis()
+
+    // Tunable OpenCV area thresholds for distance control (adjust via experimentation)
+    private var stopAreaThreshold = 75000.0   // Area above which the robot stops in place
+    private var backupAreaThreshold = 120000.0 // Area above which the robot backs up
 
     // Selected color tracking state
     private var selectedH = 0.0
@@ -85,6 +90,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
                         selectedS = hsvPixel[1]
                         selectedV = hsvPixel[2]
                         hasSelectedColor = true
+                        lastDetectedTime = System.currentTimeMillis()
                         activity?.runOnUiThread {
                             Toast.makeText(requireContext(), "Tracking Color Set! HSV(${selectedH.toInt()}, ${selectedS.toInt()}, ${selectedV.toInt()})", Toast.LENGTH_SHORT).show()
                         }
@@ -151,44 +157,57 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         val scale = 0.5
         Imgproc.resize(rgbaMat, smallMat, Size(), scale, scale, Imgproc.INTER_LINEAR)
 
+        val smallWidth = smallMat.cols().toDouble()
+        val smallHeight = smallMat.rows().toDouble()
+
         // Blur the downsized frame to reduce high-frequency noise
         Imgproc.GaussianBlur(smallMat, blurred, Size(11.0, 11.0), 0.0)
 
         // Convert RGBA to HSV for color filtering
         Imgproc.cvtColor(blurred, hsvMat, Imgproc.COLOR_RGB2HSV)
 
-        // Dynamic HSV range based on touch-selected color
-        val lowerBound: Scalar
-        val upperBound: Scalar
-
+        // Dynamic HSV range with Hue wrap-around (0..180) for colors like red
         if (hasSelectedColor) {
-            val hRange = 5.0
+            val hRange = 8.0
             val sRange = 60.0
-            val vRange = 100.0
+            val vRange = 125.0
 
-            val hMin = (selectedH - hRange).coerceAtLeast(0.0)
-            val hMax = (selectedH + hRange).coerceAtMost(180.0)
+            val hMin = selectedH - hRange
+            val hMax = selectedH + hRange
 
-            // If selected color is white/gray (low saturation), allow broad white/gray range (S: 0..60)
             val sMin = if (selectedS < 50.0) 0.0 else (selectedS - sRange).coerceAtLeast(30.0)
             val sMax = if (selectedS < 50.0) 60.0 else 255.0
 
             val vMin = (selectedV - vRange).coerceAtLeast(30.0)
             val vMax = 255.0
 
-            lowerBound = Scalar(hMin, sMin, vMin)
-            upperBound = Scalar(hMax, sMax, vMax)
+            if (hMin < 0.0) {
+                val mask1 = Mat()
+                val mask2 = Mat()
+                Core.inRange(hsvMat, Scalar(0.0, sMin, vMin), Scalar(hMax, sMax, vMax), mask1)
+                Core.inRange(hsvMat, Scalar(180.0 + hMin, sMin, vMin), Scalar(180.0, sMax, vMax), mask2)
+                Core.bitwise_or(mask1, mask2, maskMat)
+                mask1.release()
+                mask2.release()
+            } else if (hMax > 180.0) {
+                val mask1 = Mat()
+                val mask2 = Mat()
+                Core.inRange(hsvMat, Scalar(hMin, sMin, vMin), Scalar(180.0, sMax, vMax), mask1)
+                Core.inRange(hsvMat, Scalar(0.0, sMin, vMin), Scalar(hMax - 180.0, sMax, vMax), mask2)
+                Core.bitwise_or(mask1, mask2, maskMat)
+                mask1.release()
+                mask2.release()
+            } else {
+                Core.inRange(hsvMat, Scalar(hMin, sMin, vMin), Scalar(hMax, sMax, vMax), maskMat)
+            }
         } else {
             // Default fallback before any color is tapped (white ball range)
-            lowerBound = Scalar(0.0, 0.0, 240.0)
-            upperBound = Scalar(180.0, 20.0, 255.0)
+            Core.inRange(hsvMat, Scalar(0.0, 0.0, 240.0), Scalar(180.0, 20.0, 255.0), maskMat)
         }
 
-        Core.inRange(hsvMat, lowerBound, upperBound, maskMat)
-
-        // Noise reduction (morphology)
+        // Noise reduction (morphology) - increased dilation to fill holes and solidify ball edges
         Imgproc.erode(maskMat, maskMat, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0)))
-        Imgproc.dilate(maskMat, maskMat, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0)))
+        Imgproc.dilate(maskMat, maskMat, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(9.0, 9.0)))
 
         // Find contours
         val contours = mutableListOf<MatOfPoint>()
@@ -202,14 +221,10 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         var bestCircularity = 0.0
         var bestFillRatio = 0.0
 
-        val smallWidth = smallMat.cols().toDouble()
-        val smallHeight = smallMat.rows().toDouble()
-        val smallCenterX = smallWidth / 2.0
-
         for (contour in contours) {
             val area = Geometry.contourArea(contour)
             // Scaled down area range (corresponds to 200 to 40000 on full frame)
-            if (area in 100.0..12500.0) {
+            if (area in 200.0.. backupAreaThreshold * 1.2) {
                 val contour2f = MatOfPoint2f()
                 contour.convertTo(contour2f, CvType.CV_32FC2)
 
@@ -245,23 +260,34 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             c.release()
         }
 
-        // Sample HSV color values at the detected ball center (or center of frame if no ball)
+        // Sample HSV color values at the detected ball center
         var sampledH = 0.0
         var sampledS = 0.0
         var sampledV = 0.0
 
-        val samplePoint = if (bestCircleCenter != null && bestRadius > 0f) {
-            bestCircleCenter
-        } else {
-            Point(smallCenterX, smallHeight / 2.0)
+        if (bestCircleCenter != null && bestRadius > 0f) {
+            val sx = bestCircleCenter.x.toInt().coerceIn(0, hsvMat.cols() - 1)
+            val sy = bestCircleCenter.y.toInt().coerceIn(0, hsvMat.rows() - 1)
+            val hsvPixel = hsvMat.get(sy, sx)
+            if (hsvPixel != null && hsvPixel.size >= 3) {
+                sampledH = hsvPixel[0]
+                sampledS = hsvPixel[1]
+                sampledV = hsvPixel[2]
+            }
         }
-        val sx = samplePoint.x.toInt().coerceIn(0, hsvMat.cols() - 1)
-        val sy = samplePoint.y.toInt().coerceIn(0, hsvMat.rows() - 1)
-        val hsvPixel = hsvMat.get(sy, sx)
-        if (hsvPixel != null && hsvPixel.size >= 3) {
-            sampledH = hsvPixel[0]
-            sampledS = hsvPixel[1]
-            sampledV = hsvPixel[2]
+
+        // Sample HSV color values at the center reticle crosshair
+        var reticleH = 0.0
+        var reticleS = 0.0
+        var reticleV = 0.0
+
+        val rx = (smallWidth / 2.0).toInt().coerceIn(0, hsvMat.cols() - 1)
+        val ry = (smallHeight / 2.0).toInt().coerceIn(0, hsvMat.rows() - 1)
+        val reticlePixel = hsvMat.get(ry, rx)
+        if (reticlePixel != null && reticlePixel.size >= 3) {
+            reticleH = reticlePixel[0]
+            reticleS = reticlePixel[1]
+            reticleV = reticlePixel[2]
         }
 
         // Scale center and radius back up to full rgbaMat resolution for drawing and motor control
@@ -284,6 +310,8 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         val shouldSendCommand = currentTime - lastSendTime >= 100L
 
         if (isValidMatch) {
+            lastDetectedTime = currentTime // Reset search timer upon successful detection
+
             val center = fullCircleCenter
             // Draw circle around detected ball on full-res rgbaMat
             Imgproc.circle(rgbaMat, center, fullRadius.toInt(), Scalar(0.0, 255.0, 0.0), 3)
@@ -296,9 +324,27 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             val errorX = ballX - centerX
             val normalizedError = errorX / (frameWidth / 2.0)
 
-            val baseForward = if (fullRadius < 100.0) 180 else 0
+            // Distance control based on OpenCV area with smooth proportional slowdown near stopAreaThreshold:
+            // - If area >= backupAreaThreshold: Back up (negative speed)
+            // - If area >= stopAreaThreshold: Stop in place (0 speed)
+            // - If area is close to stopAreaThreshold (within 50%): Smoothly scale down speed from 255 to min friction speed 100
+            // - Else (area well below stopAreaThreshold): Full speed (255)
+            val baseForward = when {
+                bestArea >= backupAreaThreshold -> -120
+                bestArea >= stopAreaThreshold -> 0
+                else -> {
+                    if (bestArea > stopAreaThreshold * 0.75) {
+                        100
+                    } else if (bestArea > stopAreaThreshold * 0.5) {
+                        150
+                    }
+                    else {
+                        255
+                    }
+                }
+            }
 
-            val rawTurn = (normalizedError * 180.0).roundToInt()
+            val rawTurn = (normalizedError * 255.0).roundToInt()
             val turnPower = when {
                 rawTurn > 15 -> rawTurn.coerceIn(100, 255)
                 rawTurn < -15 -> rawTurn.coerceIn(-255, -100)
@@ -315,23 +361,57 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             }
 
             activity?.runOnUiThread {
-                tvTrackingStatus.text = "MATCH! Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()} | Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
+                tvTrackingStatus.text = "MATCH! Area:${bestArea.toInt()} | Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
             }
         } else {
+            val timeSinceLastDetection = currentTime - lastDetectedTime
+            // If lost for >= 1s and < 6s (searching for 5s), spin in place to search. Otherwise stop.
+            val command = when {
+                hasSelectedColor && timeSinceLastDetection in 1000L..6000L -> "255,-255,0" // Rotate in place (search)
+                else -> "0,0,0" // Stop
+            }
+
             if (shouldSendCommand) {
                 lastSendTime = currentTime
-                BluetoothService.sendCommand("0,0,0")
+                BluetoothService.sendCommand(command)
             }
+
             activity?.runOnUiThread {
-                tvTrackingStatus.text = if (!hasSelectedColor) "Tap any ball on screen to select color..." else "Searching... Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()})"
+                tvTrackingStatus.text = when {
+                    !hasSelectedColor -> "Tap any ball on screen to select color..."
+                    timeSinceLastDetection in 1000L..6000L -> "Searching... (Rotating in circle)"
+                    timeSinceLastDetection > 6000L -> "Search timeout - Stopped"
+                    else -> "Lost ball briefly..."
+                }
             }
         }
 
         // Draw debug overlay text directly on the camera frame
         val debugText1 = "Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()}"
-        val debugText2 = "Circ:${"%.2f".format(bestCircularity)} Fill:${"%.2f".format(bestFillRatio)}"
-        Imgproc.putText(rgbaMat, debugText1, Point(30.0, 150.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255.0, 255.0, 0.0), 2)
-        Imgproc.putText(rgbaMat, debugText2, Point(30.0, 190.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255.0, 255.0, 0.0), 2)
+        val debugText2 = "Reticle:(${reticleH.toInt()},${reticleS.toInt()},${reticleV.toInt()})"
+        val debugText3 = "Circ:${"%.2f".format(bestCircularity)} Fill:${"%.2f".format(bestFillRatio)}"
+        Imgproc.putText(rgbaMat, debugText1, Point(30.0, 140.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255.0, 255.0, 0.0), 2)
+        Imgproc.putText(rgbaMat, debugText2, Point(30.0, 180.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0.0, 255.0, 255.0), 2)
+        Imgproc.putText(rgbaMat, debugText3, Point(30.0, 220.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255.0, 255.0, 0.0), 2)
+
+        // --- Picture-in-Picture Filtered Mask Preview ---
+        val thumbWidth = 200
+        val thumbHeight = (frameHeight / frameWidth * thumbWidth).toInt()
+        val smallMaskThumb = Mat()
+        Imgproc.resize(maskMat, smallMaskThumb, Size(thumbWidth.toDouble(), thumbHeight.toDouble()), 0.0, 0.0, Imgproc.INTER_NEAREST)
+
+        val thumbRgba = Mat()
+        Imgproc.cvtColor(smallMaskThumb, thumbRgba, Imgproc.COLOR_GRAY2RGBA)
+
+        val xOffset = (frameWidth - thumbWidth - 20).toInt().coerceAtLeast(0)
+        val yOffset = 20
+        if (yOffset + thumbHeight <= rgbaMat.rows() && xOffset + thumbWidth <= rgbaMat.cols()) {
+            val roi = rgbaMat.submat(yOffset, yOffset + thumbHeight, xOffset, xOffset + thumbWidth)
+            thumbRgba.copyTo(roi)
+            roi.release()
+        }
+        smallMaskThumb.release()
+        thumbRgba.release()
 
         return rgbaMat
     }
