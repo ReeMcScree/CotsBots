@@ -23,13 +23,30 @@
         android:orientation="vertical"
         android:padding="12dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Ball Following Mode (OpenCV)"
-            android:textColor="#FF9800"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Ball Following Mode (OpenCV)"
+                android:textColor="#FF9800"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <ToggleButton
+                android:id="@+id/btnFisheye"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:textOn="Fisheye ON"
+                android:textOff="Fisheye OFF"
+                android:textSize="12sp"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvTrackingStatus"

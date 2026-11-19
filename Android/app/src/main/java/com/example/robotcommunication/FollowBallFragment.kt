@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ToggleButton
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -29,6 +30,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
 
     private lateinit var cameraView: CameraBridgeViewBase
     private lateinit var tvTrackingStatus: TextView
+    private lateinit var btnFisheye: ToggleButton
 
     private lateinit var rgbaMat: Mat
     private lateinit var smallMat: Mat
@@ -48,6 +50,9 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
     private var selectedS = 0.0
     private var selectedV = 0.0
     private var hasSelectedColor = false
+
+    // Fisheye Lens Mode toggle
+    private var isFisheyeMode = false
 
     private val requestCameraLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -69,10 +74,17 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         cameraView = view.findViewById(R.id.javaCameraView)
         tvTrackingStatus = view.findViewById(R.id.tvTrackingStatus)
+        btnFisheye = view.findViewById(R.id.btnFisheye)
 
         cameraView.visibility = SurfaceView.VISIBLE
         cameraView.setCvCameraViewListener(this)
         cameraView.setCameraIndex(CameraBridgeViewBase.CAMERA_ID_BACK)
+
+        // Fisheye lens mode toggle listener
+        btnFisheye.setOnCheckedChangeListener { _, isChecked ->
+            isFisheyeMode = isChecked
+            Toast.makeText(requireContext(), "Fisheye Mode: ${if (isChecked) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+        }
 
         // Touch listener to select color from camera preview
         cameraView.setOnTouchListener { v, event ->
@@ -168,7 +180,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
 
         // Dynamic HSV range with Hue wrap-around (0..180) for colors like red
         if (hasSelectedColor) {
-            val hRange = 8.0
+            val hRange = 5.0
             val sRange = 60.0
             val vRange = 125.0
 
@@ -260,6 +272,11 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             c.release()
         }
 
+        // Apply fisheye lens scaling if enabled (scales 45,000 to 14,000 and 6,000 to 1,866 ~ 2,000)
+        if (isFisheyeMode) {
+            bestArea *= (14.0 / 45.0)
+        }
+
         // Sample HSV color values at the detected ball center
         var sampledH = 0.0
         var sampledS = 0.0
@@ -333,7 +350,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
                 bestArea >= backupAreaThreshold -> -120
                 bestArea >= stopAreaThreshold -> 0
                 else -> {
-                    if (bestArea > stopAreaThreshold * 0.75) {
+                    if (bestArea > stopAreaThreshold * 0.7) {
                         100
                     } else if (bestArea > stopAreaThreshold * 0.5) {
                         150
@@ -361,7 +378,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
             }
 
             activity?.runOnUiThread {
-                tvTrackingStatus.text = "MATCH! Area:${bestArea.toInt()} | Circ:${String.format(Locale.US, "%.2f", bestCircularity)}"
+                tvTrackingStatus.text = "MATCH! Area:${bestArea.toInt()} | Circ:${String.format(Locale.US, "%.2f", bestCircularity)}${if (isFisheyeMode) " [Fisheye]" else ""}"
             }
         } else {
             val timeSinceLastDetection = currentTime - lastDetectedTime
@@ -387,7 +404,7 @@ class FollowBallFragment : Fragment(), CameraBridgeViewBase.CvCameraViewListener
         }
 
         // Draw debug overlay text directly on the camera frame
-        val debugText1 = "Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()}"
+        val debugText1 = "Det:(${sampledH.toInt()},${sampledS.toInt()},${sampledV.toInt()}) Area:${bestArea.toInt()}${if (isFisheyeMode) " (Fish)" else ""}"
         val debugText2 = "Reticle:(${reticleH.toInt()},${reticleS.toInt()},${reticleV.toInt()})"
         val debugText3 = "Circ:${"%.2f".format(bestCircularity)} Fill:${"%.2f".format(bestFillRatio)}"
         Imgproc.putText(rgbaMat, debugText1, Point(30.0, 140.0), Imgproc.FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255.0, 255.0, 0.0), 2)
